@@ -3,6 +3,7 @@
     $isStudent = in_array($page, ['portal', 'self-checkout'], true);
     $titles = [
         'dashboard' => 'Dashboard',
+        'visit-kiosk' => 'Kunjungan & QR',
         'circulation' => 'Sirkulasi POS',
         'catalog' => 'Katalog & Eksemplar',
         'members' => 'Anggota & Laporan',
@@ -19,6 +20,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#0b132b">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ $titles[$page] }} · SIMPUS</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
@@ -120,6 +122,12 @@
             <section class="welcome-banner">
                 <div><span class="eyebrow eyebrow-light">PORTAL MAHASISWA</span><h1>Selamat datang, {{ $student->name }} <span>✦</span></h1><p>Temukan bacaan berikutnya dan kelola aktivitas perpustakaanmu.</p></div>
                 <div class="banner-book"><i data-lucide="book-open"></i><span>{{ number_format($books->sum('available_copies_count'), 0, ',', '.') }} eksemplar tersedia</span></div>
+            </section>
+            <section class="panel visit-scanner block md:hidden" data-visit-scanner data-scan-url="{{ route('student.visits.scan') }}">
+                <div class="panel-head"><div><h2>Presensi perpustakaan</h2><p>Pindai QR masuk atau keluar yang tampil di meja resepsionis.</p></div><span class="badge badge-blue">Kamera ponsel</span></div>
+                <div class="visit-scanner-content"><button class="button button-primary" type="button" data-scanner-start><i data-lucide="scan-line"></i> Buka pemindai QR</button><div id="library-visit-reader" class="visit-reader" hidden></div></div>
+                <p class="visit-scanner-status" data-scanner-status role="status" aria-live="polite">Kamera hanya digunakan ketika kamu memulai pemindaian.</p>
+                <small class="visit-camera-note">Izinkan akses kamera dan gunakan halaman HTTPS atau localhost.</small>
             </section>
             @if (session('status'))<div class="status-message">{{ session('status') }}</div>@endif
             <div class="section-heading"><div><h2>Koleksi perpustakaan</h2><p>Ketersediaan buku diperbarui langsung dari katalog.</p></div><a class="button button-primary" href="{{ route('student.checkout') }}">Pinjam mandiri <i data-lucide="arrow-right"></i></a></div>
@@ -278,7 +286,8 @@
             <div class="workspace-label">WORKSPACE PETUGAS</div>
             <nav class="side-nav">
                 <a class="{{ $page === 'dashboard' ? 'active' : '' }}" href="{{ route('admin.dashboard') }}"><i data-lucide="layout-dashboard"></i>Dashboard</a>
-                <a class="{{ $page === 'circulation' ? 'active' : '' }}" href="{{ route('admin.circulation') }}"><i data-lucide="repeat-2"></i>Sirkulasi POS</a>
+                    <a class="{{ $page === 'visit-kiosk' ? 'active' : '' }}" href="{{ route('admin.visits.kiosk') }}"><i data-lucide="scan-line"></i>Kunjungan & QR</a>
+                    <a class="{{ $page === 'circulation' ? 'active' : '' }}" href="{{ route('admin.circulation') }}"><i data-lucide="repeat-2"></i>Sirkulasi POS</a>
                 <a class="{{ $page === 'catalog' ? 'active' : '' }}" href="{{ route('admin.books.index') }}"><i data-lucide="library"></i>Katalog & Eksemplar</a>
                 <a class="{{ $page === 'members' ? 'active' : '' }}" href="{{ route('admin.members.index') }}"><i data-lucide="users-round"></i>Anggota & Laporan</a>
             </nav>
@@ -295,18 +304,30 @@
             <main class="page-content">
                 @if (session('status'))<div class="status-message">{{ session('status') }}</div>@endif
                 @if (session('temporary_password'))<div class="info-banner"><i data-lucide="key-round"></i><span>Kata sandi sementara anggota baru: <b>{{ session('temporary_password') }}</b>. Salin sekarang karena tidak ditampilkan lagi.</span></div>@endif
-                @if ($page === 'dashboard')
-                    <div class="page-heading"><div><span class="eyebrow">{{ now()->translatedFormat('l, d F Y') }}</span><h1>Dashboard</h1><p>Data peminjaman dan ketersediaan diambil langsung dari database.</p></div><a class="button button-primary" href="{{ route('admin.circulation') }}"><i data-lucide="plus"></i> Buka transaksi POS</a></div>
+                @if ($page === 'visit-kiosk')
+                    <div class="page-heading"><div><span class="eyebrow">PRESENSI PERPUSTAKAAN</span><h1>Kunjungan & QR</h1><p>Satu QR untuk masuk dan keluar. QR dinamis diperbarui otomatis setiap 15 detik.</p></div><a class="button button-outline" href="{{ route('admin.dashboard') }}"><i data-lucide="arrow-left"></i> Kembali ke dashboard</a></div>
+                    <div class="visit-kiosk-grid" data-visit-kiosk data-token-url="{{ $qrTokenUrl }}">
+                        <section class="panel visit-qr-card">
+                            <div class="panel-head"><div><h2>QR kunjungan mahasiswa</h2><p>Scan pertama untuk masuk. Scan berikutnya untuk keluar; setelah keluar, scan lagi untuk masuk kembali.</p></div><span class="badge badge-green">QR dinamis</span></div>
+                            <canvas class="visit-qr-canvas" data-visit-qr aria-label="QR kunjungan mahasiswa"></canvas>
+                            <p class="visit-qr-expiry" data-visit-expiry aria-live="polite">Memuat QR...</p>
+                        </section>
+                        <p class="visit-kiosk-status" data-visit-kiosk-status role="status" aria-live="polite">Menghubungkan ke server...</p>
+                    </div>
+                @elseif ($page === 'dashboard')
+                    <div class="page-heading"><div><span class="eyebrow">{{ now()->translatedFormat('l, d F Y') }}</span><h1>Dashboard</h1><p>Data sirkulasi dan kunjungan tersinkron langsung dari database.</p></div><div class="heading-actions"><a class="button button-outline" href="{{ route('admin.visits.kiosk') }}"><i data-lucide="scan-line"></i> Layar QR kunjungan</a><a class="button button-primary" href="{{ route('admin.circulation') }}"><i data-lucide="plus"></i> Buka transaksi POS</a></div></div>
                     <div class="metric-grid">
-                        @foreach ([['Peminjaman hari ini', 'borrowed_today', 'book-up-2', 'blue'], ['Pengembalian hari ini', 'returned_today', 'book-down', 'mint'], ['Pinjaman aktif', 'active_loans', 'book-open-check', 'violet'], ['Eksemplar terlambat', 'overdue_copies', 'triangle-alert', 'gold']] as [$label, $key, $icon, $color])
+                        @foreach ([['Peminjaman hari ini', 'borrowed_today', 'book-up-2', 'blue'], ['Pengembalian hari ini', 'returned_today', 'book-down', 'mint'], ['Pinjaman aktif', 'active_loans', 'book-open-check', 'violet'], ['Eksemplar terlambat', 'overdue_copies', 'triangle-alert', 'gold'], ['Kunjungan hari ini', 'visits_today', 'users-round', 'mint']] as [$label, $key, $icon, $color])
                             <article class="metric-card"><div class="metric-top"><span>{{ $label }}</span><span class="metric-icon {{ $color }}"><i data-lucide="{{ $icon }}"></i></span></div><strong>{{ number_format($metrics[$key], 0, ',', '.') }}</strong><div class="metric-foot"><span class="badge {{ $key === 'overdue_copies' && $metrics[$key] ? 'badge-orange' : 'badge-green' }}">{{ $key === 'overdue_copies' ? 'Data aktual' : 'Tersimpan' }}</span></div></article>
                         @endforeach
                     </div>
                     <div class="dashboard-grid">
                         <section class="panel trend-panel"><div class="panel-head"><div><h2>Tren sirkulasi</h2><p>Jumlah transaksi pinjam · 7 hari terakhir</p></div><span class="badge badge-blue">Database</span></div><div class="chart"><div class="chart-y"><span>{{ max(1, $chartData->max('count')) }}</span><span>{{ (int) ($chartData->max('count') / 2) }}</span><span>0</span></div><div class="chart-area"><div class="chart-gridlines"><i></i><i></i><i></i></div><div class="bars">@foreach ($chartData as $point)<div class="bar-item"><div class="bar {{ $loop->last ? 'bar-current' : '' }}" style="height: {{ $chartData->max('count') ? max(5, $point['count'] / $chartData->max('count') * 100) : 5 }}%"><span>{{ $point['count'] }}</span></div><small>{{ $point['label'] }}</small></div>@endforeach</div></div></div></section>
+                        <section class="panel trend-panel visit-trend-panel"><div class="panel-head"><div><h2>Tren kunjungan</h2><p>Jumlah mahasiswa · Senin–Sabtu</p></div><span class="badge badge-green">{{ number_format($metrics['visits_today'], 0, ',', '.') }} hari ini</span></div><div class="chart"><div class="chart-y"><span>{{ max(1, $visitChartData->max('count')) }}</span><span>{{ (int) ($visitChartData->max('count') / 2) }}</span><span>0</span></div><div class="chart-area"><div class="chart-gridlines"><i></i><i></i><i></i></div><div class="bars visit-bars">@foreach ($visitChartData as $point)<div class="bar-item"><div class="bar {{ $point['is_today'] ? 'bar-current' : '' }}" style="height: {{ $visitChartData->max('count') ? max(5, $point['count'] / $visitChartData->max('count') * 100) : 5 }}%"><span>{{ $point['count'] }}</span></div><small>{{ $point['label'] }}</small></div>@endforeach</div></div></div></section>
                         <section class="panel attention-panel"><div class="panel-head"><div><h2>Perlu perhatian</h2><p>Pinjaman mendekati tenggat</p></div><span class="badge badge-orange">{{ $attentionLoans->count() }} item</span></div>@forelse ($attentionLoans as $loan)<div class="attention-item"><span class="attention-icon gold"><i data-lucide="calendar-clock"></i></span><div><b>{{ $loan->user->name }}</b><small>{{ $loan->bookCopy->book->title }} · jatuh tempo {{ $loan->due_at->format('d M') }}</small></div></div>@empty<p class="muted">Belum ada pinjaman yang jatuh tempo dalam dua hari.</p>@endforelse<a class="button button-outline button-wide button-small" href="{{ route('admin.members.index') }}">Lihat direktori anggota <i data-lucide="arrow-right"></i></a></section>
                         <section class="panel activity-panel"><div class="panel-head"><div><h2>Sirkulasi terbaru</h2><p>Transaksi yang benar-benar tercatat</p></div><a href="{{ route('admin.circulation') }}" class="inline-link">Buka POS <i data-lucide="arrow-right"></i></a></div><div class="table-wrap"><table><thead><tr><th>Waktu</th><th>Anggota</th><th>Judul / Eksemplar</th><th>Status</th><th>Petugas</th></tr></thead><tbody>@forelse ($recentLoans as $loan)<tr><td>{{ $loan->borrowed_at->format('H:i') }}</td><td><b>{{ $loan->user->name }}</b><small>{{ $loan->user->student_number }}</small></td><td><b>{{ $loan->bookCopy->book->title }}</b><small>{{ $loan->bookCopy->barcode }}</small></td><td><span class="badge {{ $loan->returned_at ? 'badge-green' : 'badge-blue' }}">{{ $loan->returned_at ? 'Kembali' : 'Dipinjam' }}</span></td><td>{{ $loan->processedBy?->name ?? 'Mandiri' }}</td></tr>@empty<tr><td colspan="5">Belum ada transaksi sirkulasi.</td></tr>@endforelse</tbody></table></div></section>
-                        <section class="panel room-panel"><div class="panel-head"><div><h2>Ketersediaan koleksi</h2><p>Jumlah eksemplar yang siap dipinjam</p></div><span class="badge badge-green">Aktual</span></div><div class="room-occupancy"><div><span>Eksemplar tersedia</span><b>{{ number_format($availableCopies, 0, ',', '.') }}</b></div><div class="progress"><i style="width:{{ $availablePercentage }}%"></i></div><small>{{ $availablePercentage }}% dari seluruh eksemplar tersedia.</small></div><div class="room-stats"><div><span>Pinjaman aktif</span><b>{{ number_format($metrics['active_loans'], 0, ',', '.') }}</b></div><div><span>Terlambat</span><b>{{ number_format($metrics['overdue_copies'], 0, ',', '.') }}</b></div></div><a href="{{ route('admin.books.index') }}" class="inline-link">Kelola katalog <i data-lucide="arrow-right"></i></a></section>
+                        <section class="panel activity-panel visit-activity-panel"><div class="panel-head"><div><h2>Mahasiswa berkunjung hari ini</h2><p>Daftar check-in perpustakaan</p></div><span class="badge badge-blue">{{ $todayVisits->count() }} kunjungan</span></div><div class="table-wrap"><table><thead><tr><th>Nama</th><th>NIM</th><th>Jam masuk</th><th>Jam keluar</th><th>Status</th></tr></thead><tbody>@forelse ($todayVisits as $visit)<tr><td><b>{{ $visit->user->name }}</b></td><td>{{ $visit->user->student_number ?: '—' }}</td><td>{{ $visit->check_in_at?->format('H:i') ?? '—' }}</td><td>{{ $visit->check_out_at?->format('H:i') ?? '—' }}</td><td><span class="badge {{ $visit->check_out_at ? 'badge-green' : 'badge-blue' }}">{{ $visit->check_out_at ? 'Selesai' : 'Di perpustakaan' }}</span></td></tr>@empty<tr><td colspan="5">Belum ada mahasiswa yang berkunjung hari ini.</td></tr>@endforelse</tbody></table></div></section>
+                        <section class="panel room-panel"><div class="panel-head"><div><h2>Ketersediaan koleksi</h2><p>Jumlah eksemplar yang siap dipinjam</p></div><span class="badge badge-green">Aktual</span></div><div class="room-occupancy"><div><span>Eksemplar tersedia</span><b>{{ number_format($availableCopies, 0, ',', '.') }}</b></div><div  class="progress"><i style="width:{{ $availablePercentage }}%"></i></div><small>{{ $availablePercentage }}% dari seluruh eksemplar tersedia.</small></div><div class="room-stats"><div><span>Pinjaman aktif</span><b>{{ number_format($metrics['active_loans'], 0, ',', '.') }}</b></div><div><span>Terlambat</span><b>{{ number_format($metrics['overdue_copies'], 0, ',', '.') }}</b></div></div><a href="{{ route('admin.books.index') }}" class="inline-link">Kelola katalog <i data-lucide="arrow-right"></i></a></section>
                     </div>
                 @elseif ($page === 'circulation')
                     <div class="page-heading"><div><span class="eyebrow">MEJA SIRKULASI · MEJA 01</span><h1>Sirkulasi POS</h1><p>Proses pinjaman dan pengembalian yang langsung tercatat.</p></div><span class="badge badge-green"><i data-lucide="radio"></i> Siap melayani</span></div>

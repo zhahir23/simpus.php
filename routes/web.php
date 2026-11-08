@@ -4,6 +4,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BookController;
 use App\Http\Controllers\CirculationController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\LibraryVisitController;
 use App\Http\Controllers\MemberController;
 use App\Http\Controllers\StudentPortalController;
 use Illuminate\Support\Facades\Route;
@@ -18,6 +19,8 @@ Route::prefix('admin')->name('admin.')->group(function (): void {
     Route::middleware('role:admin')->group(function (): void {
         Route::get('/', fn () => redirect()->route('admin.dashboard'))->name('home');
         Route::get('/dashboard', DashboardController::class)->name('dashboard');
+        Route::get('/presensi', [LibraryVisitController::class, 'kiosk'])->name('visits.kiosk');
+        Route::get('/presensi/qr', [LibraryVisitController::class, 'tokens'])->middleware('throttle:60,1')->name('visits.tokens');
         Route::get('/sirkulasi', [CirculationController::class, 'index'])->name('circulation');
         Route::post('/sirkulasi', [CirculationController::class, 'store'])->name('loans.store');
         Route::post('/pinjaman/{loan}/kembali', [CirculationController::class, 'storeReturn'])->name('loans.return');
@@ -43,5 +46,6 @@ Route::prefix('mahasiswa')->name('student.')->group(function (): void {
         Route::get('/pinjaman-mandiri', [StudentPortalController::class, 'checkout'])->name('checkout');
         Route::post('/pinjaman-mandiri', [StudentPortalController::class, 'storeLoan'])->name('checkout.store');
         Route::post('/pinjaman/{loan}/kembali', [StudentPortalController::class, 'storeReturn'])->name('loans.return');
+        Route::post('/presensi/scan', [LibraryVisitController::class, 'scan'])->middleware('throttle:30,1')->name('visits.scan');
     });
 });

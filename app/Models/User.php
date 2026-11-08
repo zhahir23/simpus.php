@@ -33,6 +33,11 @@ class User extends Authenticatable
         return $this->hasMany(Loan::class);
     }
 
+    public function visits(): HasMany
+    {
+        return $this->hasMany(LibraryVisit::class);
+    }
+
     protected function nameInitials(): Attribute
     {
         return Attribute::get(
